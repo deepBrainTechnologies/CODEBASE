@@ -1,0 +1,46 @@
+// This experiment is to test the sensitivity of V_S
+
+load_file("nrngui.hoc")
+load_file("simulation_base.hoc")
+dt = 0.001
+
+objref cutoff_file
+strdef cutoff_file_name,run_file_name
+
+// want parameters to be set specifically by arguments,
+// otherwise fail
+// g_gj, vs, layer
+// vary soma leak is g_pas=2e-3, e_pas=-80 mV, -70 mV, -60 mV, -50 mV
+// assume IS leak is (-70,1e-3)
+// vary distance of gap junction from soma
+
+load_gj_axons(2,layer,0,0,g_gj)
+print "loaded axons"
+//setup_gj_session()
+if(test_axon.stim_loc==0){ quit() }
+
+cutoff_file = new File()
+sprint(cutoff_file_name,"vs-expcellgjISgNa_L%d_gj%g-vs%d.out",layer,g_gj,vs)
+cutoff_file.wopen(cutoff_file_name)
+
+set_soma_leak(axon1,vs,2e-3)
+set_soma_leak(axon2,vs,2e-3)
+
+stim1.amp=2
+stim2.amp=2
+
+d_dist = 5
+n_iter = (dist1_end-dist1_beg)/d_dist + 1
+
+for(j=0;j<n_iter;j=j+1){    
+    dist = dist1_beg + j*d_dist
+    print "distance=", dist
+    cutoff_file.printf("%g\t",dist)
+    sprint(run_file_name,"vs-expcellgjISgNa-run_L%d-gj%g-vs%d-d%d.out",layer,g_gj,vs,dist)
+    gj.reset_loc(dist/axon1.axon[axon1.IS].L)
+    run_search(cutoff_file,run_file_name,3,1) 
+    // 1 for running through different g_Na in the IS
+    //refine_search(cutoff_file,run_file_name,3,1)
+}
+
+//quit() //uncomment for batch runs

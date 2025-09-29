@@ -1,0 +1,461 @@
+obfunc path_list(){local start_loc,end_loc localobj rvp,start_sref,end_sref,sec_list
+    // give a list of all sections between start_sref and at end_loc 
+    // of end_sref
+    start_sref = $o1
+    start_loc = $2
+    end_sref = $o3
+    end_loc = $4
+    rvp = new RangeVarPlot("v")
+    
+    // start_sref and end_sref sections are added no matter what anyway
+    start_sref.sec{ rvp.begin(0.5) }
+    end_sref.sec{ rvp.end(0.5) }
+    sec_list = new SectionList()
+    rvp.list(sec_list)
+    
+    // now figure out whether start_sref and end_sref sections 
+    // should be there
+    start_sref.sec{ distance() }
+    end_sref.sec{
+	if(distance(1)>distance(0) && end_loc==0){
+	    sec_list.remove()
+	}else if(distance(0)>distance(1) && end_loc==1){
+	    sec_list.remove()
+	}
+    }
+    end_sref.sec{ distance() }
+    start_sref.sec{
+	if(distance(1)>distance(0) && start_loc==0){
+	    sec_list.remove()
+	}else if(distance(0)>distance(1) && start_loc==1){
+	    sec_list.remove()
+	}
+    }
+    return sec_list
+}    
+
+func soma_dist(){local dist localobj cell,sref
+    // give the distance from top of sref to the soma in um
+    cell = $o1
+    sref = $o2
+    cell.axon[cell.IS]{ distance() }
+    sref.sec{ dist = distance(0) }
+    return dist
+}
+
+func el_soma_dist(){local dist,end_loc,ss localobj cell,IS_sref,sref,sec_list
+    // give the electrotonic distance from end_loc in sref to the soma
+    cell = $o1
+    sref = $o2
+    end_loc = $3
+    
+    dist = 0
+    ss = 0
+    cell.axon[cell.IS]{ 
+	IS_sref = new SectionRef() 
+	if(sref.is_cas()){ ss = 1 } // sref is same section as IS
+    }
+    if(ss==1){
+	IS_sref.sec{
+	    distance()
+	    dist = distance(end_loc)/elength(diam)
+	}
+    }else{
+	sec_list = path_list(IS_sref,0,sref,end_loc)
+	forsec sec_list{
+	    dist = dist + L/elength(diam)
+	}
+    }
+    return dist
+}
+
+func el_junction_dist(){local dist,end_loc,ss localobj cell,jref,sref,sec_list
+    // give the electrotonic distance from end_loc in sref to junction_site
+    // assumes end_loc is either 0 or 1
+    cell = $o1
+    sref = $o2
+    end_loc = $3
+    
+    dist = 0
+    ss = 0
+    cell.axon[cell.junction_site]{ 
+	jref = new SectionRef() 
+	if(sref.is_cas()){ ss = 1 }
+    }
+    
+    if(ss==1){
+	jref.sec{
+	    distance()
+	    dist = distance(end_loc)/elength(diam)
+	}
+    }else{
+	sec_list = path_list(jref,0,sref,end_loc)
+        
+	forsec sec_list{
+	    dist = dist + L/elength(diam)
+	}
+    }
+    return dist
+}
+
+
+func junction_gr(){local i, ratio localobj cell,sref, pref
+    // get geometric ratio of junction_site with parent in axon
+    ratio = 0
+    cell = $o1
+    
+    cell.axon[cell.junction_site]{
+        sref = new SectionRef()
+    }
+    sref.parent{
+        pref = new SectionRef()
+    }
+    
+    for(i=0;i<pref.nchild;i=i+1){
+        pref.child[i]{
+            if(!sref.is_cas()){
+                ratio = gr(sref.sec.diam,diam,pref.sec.diam)
+            }
+        }
+    }
+    
+    return ratio
+}
+
+func junction_ratio(){local ratio localobj cell,sref
+    //get plain ratio between junction collateral and parent compartment
+    ratio = 0
+    cell = $o1
+    
+    cell.axon[cell.junction_site]{
+        sref = new SectionRef()
+    }
+    sref.parent{
+        ratio = diam/sref.sec.diam
+    }
+    
+    return ratio
+}
+
+strdef ISname
+
+func n_branch_points(){local i,el,total localobj cell,sref,pref,cref,prev_name
+    // get how many branch points are 0.5 elengths from junction_site
+    // junction site doesn't count as a branch point
+    total = 0
+    cell = $o1
+    sprint(ISname,".*axon[%d]",cell.IS)
+    prev_name = new String()
+    
+    cell.axon[cell.junction_site]{
+        sref = new SectionRef()
+    }
+    
+    sref.parent{
+        el = elength(diam)
+        //print secname(), L, el/2, 2*L/el
+        pref = new SectionRef()
+        if(!issection(ISname) && L<el/2){
+	    sref.sec{ prev_name.s = secname() }
+	    //print prev_name.s, secname(), " ", L/el, gr_up(pref)
+	    total = total + 1
+            total = total + count_bp_up(pref,2*L/el)
+        }
+    }
+    
+    for(i=0;i<pref.nchild;i=i+1){
+        pref.child[i]{
+            el = elength(diam)
+            //print secname(), L, el/2, 2*L/el
+            cref = new SectionRef()
+            if(L<el/2 && cref.nchild>1){
+		pref.sec{ prev_name.s = secname() }
+		//print prev_name.s, secname(), " ", L/el, gr_down(cref)
+                total = total + 1
+                total = total + count_bp_down(cref,2*L/el)
+            }
+        }
+    }        
+    
+    return total
+}
+
+func count_bp_up(){local i,prevL,el,total localobj sref,pref,oref,prev_name
+    // count branch points up the parent branch
+    sref = $o1
+    prevL = $2
+    total = 0
+    prev_name = new String()
+    
+    sref.parent{
+        el = elength(diam)
+        //print secname(), L, el/2, prevL+2*L/el
+        pref = new SectionRef()
+        if(!issection(ISname) && prevL+2*L/el<1){
+	    sref.sec{ prev_name.s = secname() }
+	    //print prev_name.s, secname(), " ", L/el, gr_up(pref)
+            total = total + 1
+            total = total + count_bp_up(pref,prevL+2*L/el)
+        }
+    }
+    
+    for(i=0;i<pref.nchild;i=i+1){
+        pref.child[i]{
+            el = elength(diam)
+            //print secname(), L, el/2, prevL+2*L/el
+            oref = new SectionRef()
+            if(!sref.is_cas() && prevL+2*L/el<1 && oref.nchild>1){
+		//pref.sec{ prev_name.s = secname() }
+		print prev_name.s, secname(), " ", L/el, gr_down(oref)
+                total = total + 1
+                total = total + count_bp_down(oref,prevL+2*L/el)
+            }
+        }
+    }
+    
+    return total
+}
+
+func count_bp_down(){local i,prevL,el,total localobj sref,cref,prev_name
+    // count branch point down the current branch
+    sref = $o1
+    prevL = $2
+    total = 0
+    prev_name = new String()
+    
+    for(i=0;i<sref.nchild;i=i+1){
+        sref.child[i]{
+            el = elength(diam)
+            //print secname(), L, el/2, prevL+2*L/el
+            cref = new SectionRef()
+            if(prevL+2*L/el<1 && cref.nchild>1){
+		sref.sec{ prev_name.s = secname() }
+		//print prev_name.s, secname(), " ", L/el, gr_down(cref)
+                total = total + 1
+                total = total + count_bp_down(cref,prevL+2*L/el)
+            }
+        }
+    }
+    
+    return total
+}
+
+func gr_up(){local i, ratio localobj sref, pref
+    // get geometric ratio of referenced site with parent in axon
+    ratio = 0    
+    sref = $o1
+
+    sref.parent{
+        pref = new SectionRef()
+    }
+    
+    for(i=0;i<pref.nchild;i=i+1){
+        pref.child[i]{
+            if(!sref.is_cas()){
+                ratio = gr(sref.sec.diam,diam,pref.sec.diam)
+            }
+        }
+    }
+    
+    return ratio
+}
+
+func gr_down(){local i, ratio localobj sref
+    // get geometric ratio of referenced site with children in axon
+    ratio = 0
+    sref = $o1
+    
+    if(sref.nchild>0){
+	ratio = gr(sref.sec.diam,sref.child[0].diam,sref.child[1].diam)
+    }
+    
+    return ratio
+}
+
+func wa_branch_points(){local i,total,jdist localobj cell,sref,pref,cref
+    // get a weighted aver of the branch points that are within 0.5 elengths 
+    // from the junction_site. Use weight w=exp(-6*log(2)*x), estimated from
+    // Manor et al. (1991)
+    // junction site doesn't count as a branch point
+    total = 0
+    cell = $o1
+    sprint(ISname,".*axon[%d]",cell.IS)
+    
+    cell.axon[cell.junction_site]{
+        sref = new SectionRef()
+    }
+    
+    sref.parent{
+        pref = new SectionRef()
+	jdist = el_junction_dist(cell,pref,0)
+        if(!issection(ISname) && jdist<0.5){
+	    print secname(), " ", jdist, " adding: ",exp(-6*log(2)*jdist)
+            total = total + exp(-6*log(2)*jdist)
+            total = total + wa_bp_up(cell,pref)
+        }else{ print secname(), " ", jdist, " rejected"}
+    }
+    
+    for(i=0;i<pref.nchild;i=i+1){
+        pref.child[i]{
+            cref = new SectionRef()
+	    jdist = el_junction_dist(cell,cref,1)
+            if(!sref.is_cas() && jdist<0.5 && cref.nchild>1){
+		print secname(), " ", jdist, " adding: ",exp(-6*log(2)*jdist)
+                total = total + exp(-6*log(2)*jdist)
+                total = total + wa_bp_down(cell,cref)
+            }else{ print secname(), " ", jdist, " rejected"}
+        }
+    }        
+    
+    return total
+}
+
+func wa_bp_up(){local i,total,jdist localobj cell,sref,pref,oref
+    // count branch points up the parent branch
+    cell = $o1
+    sref = $o2
+    total = 0
+
+    sref.parent{
+        pref = new SectionRef()
+	jdist = el_junction_dist(cell,pref,0)
+        if(!issection(ISname) && jdist<0.5){
+	    print secname(), " ", jdist, " adding: ",exp(-6*log(2)*jdist)
+            total = total + exp(-6*log(2)*jdist)
+            total = total + wa_bp_up(cell,pref)
+        }else{ print secname(), " ", jdist, " rejected"}
+    }
+
+    for(i=0;i<pref.nchild;i=i+1){
+        pref.child[i]{
+            el = elength(diam)
+            oref = new SectionRef()
+	    jdist = el_junction_dist(cell,oref,1)
+            if(!sref.is_cas() && jdist<0.5 && oref.nchild>1){
+		print secname(), " ", jdist, " adding: ",exp(-6*log(2)*jdist)
+                total = total + exp(-6*log(2)*jdist)
+                total = total + wa_bp_down(cell,oref)
+            }else{ print secname(), " ", jdist, " rejected"}
+        }
+    }
+
+    return total
+}
+
+func wa_bp_down(){local i,total,jdist localobj cell,sref,cref
+    // count branch point down the current branch
+    cell = $o1
+    sref = $o2
+    total = 0
+
+    for(i=0;i<sref.nchild;i=i+1){
+        sref.child[i]{
+            cref = new SectionRef()
+	    jdist = el_junction_dist(cell,cref,1)
+            if(jdist<0.5 && cref.nchild>1){
+		print secname(), " ", jdist, " adding: ",exp(-6*log(2)*jdist)
+                total = total + exp(-6*log(2)*jdist)
+                total = total + wa_bp_down(cell,cref)
+            }else{ print secname(), " ", jdist, " rejected"}
+        }
+    }
+
+    return total
+}
+
+proc gr_report(){local j_dist,i localobj cell,pl,eref,jref,sref,pref,cref
+    // print report of all branch points and geometric ratios 
+    // leading up to junction and after junction within el/2 of junction
+    cell = $o1
+    sprint(ISname,".*axon[%d]",cell.IS)
+    
+    cell.axon[cell.extstim_site]{ eref = new SectionRef() }
+    cell.axon[cell.junction_site]{ jref = new SectionRef() }
+    pl = path_list(eref,0.5,jref,1)
+    //pl.printnames()
+    
+    forsec pl{
+	sref = new SectionRef()
+	jdist = el_junction_dist(cell,sref,0)
+	print secname(), "\t", jdist, "\t", gr_up(sref)
+    }
+    jref.sec{
+	print secname(), "\t", 0, "\t", junction_gr(cell)
+    }
+    jref.parent{
+	pref = new SectionRef()
+	jdist = el_junction_dist(cell,pref,0)
+	if(!issection(ISname) && jdist<0.5){
+	    print secname(), "\t", jdist, "\t", gr_up(pref)
+	    grrep_up(cell,pref)
+	}//else{ print secname(), " ", jdist, " rejected" }
+    }
+    for(i=0;i<pref.nchild;i=i+1){
+	pref.child[i]{
+	    sref = new SectionRef()
+	    jdist = el_junction_dist(cell,sref,1)
+	    if(!jref.is_cas() && jdist<0.5 && sref.nchild>1){
+		print secname(), "\t", jdist, "\t", gr_down(sref)
+		grrep_down(cell,sref)
+	    }//else{ print secname(), " ", jdist, " rejected" }
+	}
+    }
+}
+
+proc grrep_up(){local i,jdist localobj cell,tref,sref,pref
+    // give gr report searching up from sref
+    cell = $o1
+    tref = $o2
+    tref.parent{
+	pref = new SectionRef()
+	jdist = el_junction_dist(cell,pref,0)
+	if(!issection(ISname) && jdist<0.5){
+	    print secname(), "\t", jdist, "\t", gr_up(pref)
+	    grrep_up(cell,pref)
+	}//else{ print secname(), " ", jdist, " rejected" }
+    }
+    for(i=0;i<pref.nchild;i=i+1){
+	pref.child[i]{
+	    sref = new SectionRef()
+	    jdist = el_junction_dist(cell,sref,1)
+	    if(!tref.is_cas() && jdist<0.5 && sref.nchild>1){
+		print secname(), "\t", jdist, "\t", gr_down(sref)
+		grrep_down(cell,sref)
+	    }//else{ print secname(), " ", jdist, " rejected" }
+	}
+    }
+}
+
+proc grrep_down(){local i,jdist localobj cell,tref,sref 
+    // give gr report searching down from sref
+    cell = $o1
+    tref = $o2
+    for(i=0;i<tref.nchild;i=i+1){
+	tref.child[i]{
+	    sref = new SectionRef()
+	    jdist = el_junction_dist(cell,sref,1)
+	    if(jdist<0.5 && sref.nchild>1){
+		print secname(), "\t", jdist, "\t", gr_down(sref)
+		grrep_down(cell,sref)
+	    }//else{ print secname(), " ", jdist, " rejected" }
+	}
+    }
+}
+
+proc print_junction_report(){local nbp localobj cell,j_sref
+    // print all the information about the junction_site
+    cell = $o1
+    cell.axon[cell.junction_site]{ 
+	j_sref = new SectionRef()
+    }
+    
+    print "dist from soma: ", soma_dist(cell,j_sref)
+    print "el dist from soma: ", el_soma_dist(cell,j_sref,0)
+    print "junction ratio: ", junction_ratio(cell)
+    print "junction gr: ", junction_gr(cell)
+    nbp = n_branch_points(cell)
+    print "n branch points: ", nbp
+    print "wa branch points: ", wa_branch_points(cell)
+    print "gr report: "
+    gr_report(cell)
+}

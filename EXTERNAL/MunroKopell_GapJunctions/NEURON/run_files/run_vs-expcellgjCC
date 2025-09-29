@@ -1,0 +1,11 @@
+#!/bin/bash
+
+dist1_beg=0
+dist1_end=40 # um
+layer=5
+soma_leak=2e-5 #3.12e-5 #1e-4 #1e-3 #2e-3
+for g_gj in 8e-2 4e-3 #4e-2 5e-2 2e-3 6e-3 1e-2 1.5e-2 2e-2 3e-2
+do
+  qsub -N gjCC_L${layer}_sl${soma_leak}_${g_gj} -l h_rt=24:00:00 -b y x86_64/special -nogui simulation_base.hoc -c "layer=$layer" -c "soma_leak=$soma_leak" -c "g_gj=$g_gj" -c "set_expcell_dist\($dist1_beg,$dist1_end\)" vs-expcell_gjCC.hoc
+done
+

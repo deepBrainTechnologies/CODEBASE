@@ -1,0 +1,26 @@
+#!/bin/bash
+
+cell=C031097B-P3
+IS=0
+prop_site=24
+#main axon 0 2 8 12 24 25 26 27
+
+#extstim=5 # too short for Jonas kinetics
+#junction=3
+
+#extstim=11
+#junction=9
+
+#extstim=19
+#junction=13
+
+#extstim=35
+#junction=35
+
+#extstim=28
+#junction=28
+
+for comps in 19,13 35,35 28,28 11,9 
+do
+qsub -N vsJ_${cell}_${comps} -l h_rt=24:00:00 -b y x86_64/special -nogui simulation_base.hoc -c "set_generic_arg\(\\\"$cell\\\",$IS,$prop_site,$comps\)" vs-generic_cutoff_Jonas.hoc
+done

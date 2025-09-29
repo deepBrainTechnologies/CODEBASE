@@ -1,0 +1,54 @@
+{load_file("nrngui.hoc")}
+objectvar save_window_, rvp_
+objectvar scene_vector_[4]
+objectvar ocbox_, ocbox_list_, scene_, scene_list_
+{ocbox_list_ = new List()  scene_list_ = new List()}
+{pwman_place(0,0,0)}
+{
+xpanel("RunControl", 0)
+v_init = -65
+xvalue("Init","v_init", 1,"stdinit()", 1, 1 )
+xbutton("Init & Run","run()")
+xbutton("Stop","stoprun=1")
+runStopAt = 5
+xvalue("Continue til","runStopAt", 1,"{continuerun(runStopAt) stoprun=1}", 1, 1 )
+runStopIn = 1
+xvalue("Continue for","runStopIn", 1,"{continuerun(t + runStopIn) stoprun=1}", 1, 1 )
+xbutton("Single Step","steprun()")
+t = 0
+xvalue("t","t", 2 )
+tstop = 20
+xvalue("Tstop","tstop", 1,"tstop_changed()", 0, 1 )
+dt = 0.001
+xvalue("dt","dt", 1,"setdt()", 0, 1 )
+steps_per_ms = 40
+xvalue("Points plotted/ms","steps_per_ms", 1,"setdt()", 0, 1 )
+screen_update_invl = 0.05
+xvalue("Scrn update invl","screen_update_invl", 1,"", 0, 1 )
+realtime = 0
+xvalue("Real Time","realtime", 0,"", 0, 1 )
+xpanel(2,80)
+}
+{
+save_window_ = new Graph(0)
+save_window_.size(0,20,-80,40)
+scene_vector_[2] = save_window_
+{save_window_.view(0, -80, 20, 120, 260, 89, 475, 308)}
+graphList[0].append(save_window_)
+save_window_.save_name("graphList[0].")
+save_window_.addexpr("axon1.axon[axon1.extstim_site].v(0.5)", 3, 1, 0.661053, 1.02662, 2)
+save_window_.addexpr("axon1.soma.v(0.5)", 6, 1, 0.673684, 1.02662, 2)
+save_window_.addexpr("axon2.soma.v(0.5)", 7, 1, 0.669474, 1.02987, 2)
+save_window_.addexpr("axon2.axon[axon2.prop_site].v(0.5)", 4, 1, 0.656842, 1.02987, 2)
+}
+{
+save_window_ = new PlotShape(0)
+save_window_.size(-1196.25,1391.25,-2148.38,7.875)
+save_window_.variable("v")
+scene_vector_[3] = save_window_
+{save_window_.view(-1196.25, -2148.38, 2587.5, 2156.25, 483, 434, 372, 310)}
+fast_flush_list.append(save_window_)
+save_window_.save_name("fast_flush_list.")
+}
+objectvar scene_vector_[1]
+{doNotify()}

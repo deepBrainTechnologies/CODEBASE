@@ -1,0 +1,18 @@
+#!/bin/bash
+
+geom=3
+
+extstim=43
+junction=40
+
+extstim=64
+junction=40
+
+extstim=34
+junction=26
+
+extstim=16
+junction=13
+
+qsub -N vs_${geom}_${extstim} -l h_rt=24:00:00 -b y x86_64/special -nogui simulation_base.hoc -c "set_arg\($geom,$extstim,$junction\)" vs-arg_cutoff.hoc
+

@@ -1,0 +1,43 @@
+// This experiment is to test the sensitivity of V_S
+
+//load_file("nrngui.hoc")
+//load_file("simulation_base.hoc")
+dt = 0.001
+
+objref cutoff_file,vs_list
+strdef cutoff_file_name,run_file_name
+
+// want parameters to be set specifically by arguments,
+// otherwise fail
+// set geom
+// set extstim_site, junction_site, prop_site
+// assume g_basket=0, g_chand=0, reversal potentials are -70, -50 respectively
+// vary soma leak is g_pas=2e-3, e_pas=-95 mV, -85 mV, -75 mV, -65 mV
+
+print "in vs-generic_exp.hoc, cell_name is ", cell_name
+load_axon(7,1,cell_name,IS,prop_site,extstim_site,junction_site)
+//setup_session()
+if(test_axon.stim_loc==0){ quit() }
+
+cutoff_file = new File()
+sprint(cutoff_file_name,"vs-cutoff_J_%s-ext%d.out",cell_name,extstim_site)
+cutoff_file.wopen(cutoff_file_name)
+
+vs_list = new Vector(4)
+vs_list.x[0] = -95
+vs_list.x[1] = -85
+vs_list.x[2] = -75
+vs_list.x[3] = -65
+
+set_basket(test_axon,-70,0)
+set_g_chand(0)
+
+for(j=0;j<vs_list.size();j=j+1){    
+    set_soma_leak(test_axon,vs_list.x[j],2e-3)
+    cutoff_file.printf("%g\t",vs_list.x[j])
+    sprint(run_file_name,"vs-cutoff-run_J_%s-ext%d-vs%d.out",cell_name,extstim_site,vs_list.x[j])
+    run_search(cutoff_file,run_file_name,3)
+    //refine_search(cutoff_file,run_file_name,3)
+}
+
+//quit() //uncomment for batch runs

@@ -1,0 +1,383 @@
+begintemplate PropagationSearch
+public simulation_database,find_cutoffs,n_simulations,init,prop_test,parameter_choice,pc_gNa,pc_ISgNa,kinetics
+external test_axon,axon2,load_axon,stim1,stim2,run,tstop,calc_spikes,n_extstim,n_stim,n_prop,st_extstim,st_stim,st_prop,n_cells
+objref simulation_index,simulation_gNa,simulation_database
+
+proc init(){
+  print "calling init"
+  simulation_index = new Vector(10,-1)
+  simulation_gNa = new Vector(10,-1)
+  simulation_database = new Matrix(10,10)
+  col_nexts = 1 // column with n_extstim
+  col_nst = 2 // column with n_stim
+  col_np = 3 // column wit n_prop
+  n_simulations = 0
+  
+  kinetics = 4
+  pc_gNa = 0
+  pc_ISgNa = 1
+}
+
+proc set_to_default_state(){
+    if(kinetics==1){
+        test_axon.resetwhole_Jonas(100*test_axon.axon[0].g_pas)
+        if(n_cells>1){
+            axon2.resetwhole_Jonas(100*test_axon.axon[0].g_pas)
+        }
+    }else{
+        test_axon.resetwhole_modTraub(100*test_axon.axon[0].g_pas)
+        if(n_cells>1){
+            axon2.resetwhole_modTraub(100*test_axon.axon[0].g_pas)
+        }
+    }
+}
+
+func get_axon_state(){
+    if(parameter_choice == pc_gNa){
+        if(kinetics==1){
+            return test_axon.axon[test_axon.extstim_site].gbar_nafJonas
+        }else{
+            return test_axon.axon[test_axon.extstim_site].gbar_nafTraub
+        }
+    }else{
+        if(kinetics==1){
+            return test_axon.axon[test_axon.IS].gbar_nafJonas
+        }else{
+            return test_axon.axon[test_axon.IS].gbar_nafTraub
+        }
+    }
+}
+
+proc set_axon_state(){local gNa
+    gNa = $1
+    print "in set_axon_state(): parameter_choice = ", parameter_choice
+    if(parameter_choice == pc_gNa){
+        if(kinetics==1){
+            test_axon.resetwhole_Jonas(gNa)
+            if(n_cells>1){
+                axon2.resetwhole_Jonas(gNa)
+            }
+        }else{
+            test_axon.resetwhole_modTraub(gNa)
+            if(n_cells>1){
+                axon2.resetwhole_modTraub(gNa)
+            }
+        }
+    }else{
+        if(kinetics==1){
+            test_axon.resetwhole_Jonas(0.03,gNa)
+            if(n_cells>1){
+                axon2.resetwhole_Jonas(0.03,gNa)
+            }
+        }else{
+            test_axon.resetwhole_modTraub(200*test_axon.axon[0].g_pas,gNa)
+            if(n_cells>1){
+                axon2.resetwhole_modTraub(200*test_axon.axon[0].g_pas,gNa)
+            }
+        }
+    }
+}
+
+proc run_and_record(){local i,total_spikes,start_ind
+  // run simulation and then record results in simulation_database
+  run()
+  calc_spikes()
+  
+  n_simulations = n_simulations + 1
+  if(simulation_database.nrow<n_simulations){
+    simulation_database.resize(2*simulation_database.nrow,simulation_database.ncol)
+  }
+  
+  simulation_database.x[n_simulations-1][0] = get_axon_state()
+  simulation_database.x[n_simulations-1][1] = n_extstim
+  simulation_database.x[n_simulations-1][2] = n_stim
+  simulation_database.x[n_simulations-1][3] = n_prop
+  
+  total_spikes = st_extstim.size()+st_stim.size()+st_prop.size()
+  if(simulation_database.ncol<4+total_spikes){
+      simulation_database.resize(simulation_database.nrow,4+total_spikes)
+  }
+  for(i=0;i<st_extstim.size();i=i+1){
+      simulation_database.x[n_simulations-1][4+i] = st_extstim.x[i]
+  }
+  start_ind = 4+st_extstim.size()
+  for(i=0;i<st_stim.size();i=i+1){
+      simulation_database.x[n_simulations-1][start_ind+i] = st_stim.x[i]
+  }
+  start_ind = start_ind + st_stim.size()
+  for(i=0;i<st_prop.size();i=i+1){
+      simulation_database.x[n_simulations-1][start_ind+i] = st_prop.x[i]
+  }
+
+}
+
+proc reset_database_index(){
+  simulation_gNa = simulation_database.getcol(0)
+  simulation_gNa.resize(n_simulations)
+  simulation_index = simulation_gNa.sortindex()
+}
+
+proc set_run_data(){
+    // set the simulation_database to the desired matrix
+    init()
+    simulation_database = $o1
+    n_simulations = simulation_database.nrow
+    reset_database_index()
+}
+
+func prop_test(){local beh
+  // Takes in beh, the cutoff behavior you are looking for
+  // and returns 1 if we have reached it
+  beh = $1
+
+  if(beh==0){ // looking for stim_site to fire 
+    return n_stim>=1
+  }else if(beh==1){ // looking for prop_site to fire 
+    return n_prop>=1
+  }else if(beh==2){ // looking for stim_site to fire at least twice
+    return n_stim>=2
+  }else if(beh==3){ // looking for prop_site to fire at least twice
+    return n_prop>=2
+  }else{
+    print "unknown behavior to test"
+    return 0
+  }
+}
+
+obfunc refine_window(){local i,beh,dgNa,gNa localobj window, refwindow
+    // inputs are: vector with two doubles for window, interval to jump
+    // stim by, propagation cutoff we're looking for back propagation
+    window = $o1
+    beh = $2
+    dgNa = $3
+    refwindow = window.c()
+    print "in refine window: dgNa=", dgNa, ", window=[", window.x[0][0], window.x[1][0], "]"
+    i = 1
+    while(window.x[0][0]+dgNa*i<window.x[1][0]){
+	      gNa = window.x[0][0]+dgNa*i
+        set_axon_state(gNa)
+	      print "Looking for behavior: ", beh, get_axon_state()
+	      run_and_record()
+	      if(prop_test(beh)){
+	          print "successfully found behavior ", beh
+	          refwindow.x[1][0] = gNa
+	          refwindow.x[1][1] = n_extstim
+	          refwindow.x[1][2] = n_stim
+	          refwindow.x[1][3] = n_prop
+	          break
+	      }else{
+	          print "did not find behavior ", beh
+	          refwindow.x[0][0] = gNa
+	          refwindow.x[0][1] = n_extstim
+	          refwindow.x[0][2] = n_stim
+	          refwindow.x[0][3] = n_prop
+	      }
+	      i = i + 1
+	      print "after iteration:"
+	      print "i=",i," dgNa=",dgNa," gNa=",gNa,", window=[", window.x[0][0], window.x[1][0]
+    }
+    
+    return refwindow
+}
+
+func intfir(){local i
+    // check if axon is intrinsically firing. 
+    
+    stim1.del = 0 // make cell fire no matter what at beginning, see if it fires again afterward. Some cells fire initially just because of initial conditions, but aren't intrinsically firing.
+    stim2.del = tstop
+    
+    run()
+    calc_spikes()
+    
+    if(st_prop.indwhere(">",5)!=-1 && n_prop>1){ //axon is intrinsically firing
+	      return 1
+    }
+    return 0
+}
+
+obfunc find_prop(){local depth localobj prop_info,window
+    // Takes in ddel=$1, the granularity that you want to find T_c to
+    // Outputs a vector with T_c, the value of t_f at stim_site at T_c
+    depth = $1
+    
+    window = new Matrix(2,4)
+    // columns stand for gNa, n_extstim, n_stim, n_prop
+    // first row represents case with highest gNa and no propagation
+    // second row represents case wit lowest gNa and propagation
+    for(i=0;i<n_simulations;i=i+1){
+        ind = simulation_index.x[i]
+        if(simulation_database.x[ind][col_np]>=1){
+            prev_ind = simulation_index.x[i-1]
+            window.x[0][0] = simulation_database.x[prev_ind][0]
+            window.x[0][1] = simulation_database.x[prev_ind][col_nexts]
+            window.x[0][2] = simulation_database.x[prev_ind][col_nst]
+            window.x[0][3] = simulation_database.x[prev_ind][col_np]
+            window.x[1][0] = simulation_database.x[ind][0]
+            window.x[1][1] = simulation_database.x[ind][col_nexts]
+            window.x[1][2] = simulation_database.x[ind][col_nst]
+            window.x[1][3] = simulation_database.x[ind][col_np]
+            break
+        }
+    }
+    
+    if(window.x[0][0]==0){
+        window.x[0][0] = 0
+        window.x[0][1] = 0
+        window.x[0][2] = 0
+        window.x[1][0] = max_gNa
+        window.x[1][1] = 0
+        window.x[1][2] = 0
+    }  
+    
+    window = refine_window(window,1,0.2)
+    window = refine_window(window,1,0.1)
+    if(simulation_database.getcol(col_np).indwhere(">=",1)==-1){
+        print "need to try larger than gNa=",max_gNa," for propagation"
+        prop_info = window.getrow(1)
+        return prop_info
+    }
+    
+    del_exp = 2
+    while(del_exp<=depth){
+        print "looking for propagation: ", del_exp, window.x[0][0], window.x[1][0]
+        window = refine_window(window,1,2*10^(-del_exp))
+        window = refine_window(window,1,1*10^(-del_exp))
+        del_exp = del_exp + 1
+    }
+    
+    prop_info = window.getrow(1)
+    
+    return prop_info
+}
+
+obfunc find_ref(){local depth,ind localobj ref_info,window
+    // Takes in ddel=$1, the granularity that you want to find T_c to
+    // Outputs a vector with T_c, the value of t_f at stim_site at T_c
+    depth = $1
+    
+    print "in find_ref()"
+    window = new Matrix(2,4)
+    // columns stand for gNa, n_extstim, n_stim, n_prop
+    // first row represents case with highest gNa and no propagation
+    // second row represents case with lowest gNa and propagation
+    for(i=0;i<n_simulations;i=i+1){
+        ind = simulation_index.x[i]
+        print "i=", i, " ind=", ind
+        if(simulation_database.x[ind][col_np]>=2){
+            prev_ind = simulation_index.x[i-1]
+            print "prev_ind=", prev_ind
+            window.x[0][0] = simulation_database.x[prev_ind][0]
+            window.x[0][1] = simulation_database.x[prev_ind][col_nexts]
+            window.x[0][2] = simulation_database.x[prev_ind][col_nst]
+            window.x[0][3] = simulation_database.x[prev_ind][col_np]
+            window.x[1][0] = simulation_database.x[ind][0]
+            window.x[1][1] = simulation_database.x[ind][col_nexts]
+            window.x[1][2] = simulation_database.x[ind][col_nst]
+            window.x[1][3] = simulation_database.x[ind][col_np]
+            break
+        }
+    }
+    
+    if(window.x[0][0]==0){
+        ind = simulation_index.x[n_simulations-1]
+        window.x[0][0] = simulation_database.x[ind][0]
+        window.x[0][1] = simulation_database.x[ind][col_nexts]
+        window.x[0][2] = simulation_database.x[ind][col_nst]
+        window.x[0][3] = simulation_database.x[ind][col_np]
+        window.x[1][0] = max_gNa
+        window.x[1][1] = 0
+        window.x[1][2] = 0
+        window.x[1][3] = 0
+    }  
+    
+    window = refine_window(window,3,0.2)
+    window = refine_window(window,3,0.1)
+    if(simulation_database.getcol(col_np).indwhere(">=",2)==-1){
+        print "need to try larger than gNa=",max_gNa," for t_r<5 ms"
+        ref_info = window.getrow(1)
+        return ref_info
+    }
+    
+    print "one round of find_ref, depth=",depth
+    del_exp = 2
+    while(del_exp<=depth){
+        print "looking for refractoriness: ", del_exp, window.x[0][0], window.x[1][0]
+        window = refine_window(window,3,2*10^(-del_exp))
+        window = refine_window(window,3,1*10^(-del_exp))
+        del_exp = del_exp + 1
+    }
+    
+    ref_info = window.getrow(1)
+    
+    return ref_info
+}
+
+obfunc find_cutoffs(){local depth,int_firing localobj cutoffs,prop_info,ref_info
+    // Find the cutoff points for propagation from extstim_site to prop_site.
+    // Vary parameter_choice (default g_Na within the axon),and return 
+    // for the given depth number of decimal places:
+    // (1) the lowest parameter_choice with propagation past prop_site
+    // (2) the lowest parameter_choice with propagation past prop_site within 5 ms
+    // Options for parameter_choice are: pc_gNa, pc_ISgNa
+    
+    parameter_choice = $1
+    print "in find_cutoffs(): parameter_choice = ", parameter_choice
+    if(parameter_choice == pc_gNa){
+        max_gNa = 1
+    }else{
+        max_gNa = 2
+    }
+    depth = $2
+    print "ps.kinetics = ", kinetics
+    
+    cutoffs = new Matrix(2,4)
+    // contains matrix with external stimulation and firing times for
+    // prop_info and ref_info,
+    // columns are gNa, 
+    
+    if(numarg()>2){
+        set_run_data($o3)
+    }else{
+        // reset simulation database
+        n_simulations = 0
+        simulation_index = new Vector(10,-1)
+        simulation_gNa = new Vector(10,-1)
+        simulation_database = new Matrix(10,10)
+        
+        // check to see if axon is intrinsically firing
+        print "checking if the axon is intrinsically firing"
+        set_to_default_state()
+        int_firing = intfir()
+        print "intrinsically firing?: ", int_firing
+        if(int_firing){
+	          return cutoffs
+        }
+    }
+    
+    stim1.del = 5
+    stim2.del = 10
+    print "tstop=",tstop
+    
+    // find cutoffs for propagation
+    print "finding propagation cutoff"
+    prop_info = find_prop(depth)
+    print "prop_info: ", prop_info.printf()
+    cutoffs.setrow(0,prop_info)
+    if(prop_info.x[0]==1){
+        return cutoffs
+    }
+    
+  print "resetting database"
+  // set database index
+  reset_database_index()
+
+  print "finding refractoriness cutoff"
+  // find refractory cutoff
+  ref_info = find_ref(depth)
+  print "ref_info: ", ref_info.printf()
+  cutoffs.setrow(1,ref_info)
+
+  return cutoffs
+}
+
+endtemplate PropagationSearch

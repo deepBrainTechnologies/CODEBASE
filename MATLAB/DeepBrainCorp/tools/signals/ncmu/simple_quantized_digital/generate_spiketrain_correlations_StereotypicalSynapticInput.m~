@@ -1,0 +1,33 @@
+%
+%
+%
+%
+%
+%
+function spike_train_out = ...
+		generate_spiketrain_correlations_StereotypicalSynapticInput(spike_train_in,TYPE_Corr, probabilities,delays,jitters)
+
+#define Delayed
+
+
+nSpikes = length(spike_train_in);
+spike_train_in = spike_train_in(:)';   %[1 x nSpikes]
+nDelayedCopies = length(probabilities);
+probabilities = probabilities(:)';     %[1 x nProbabilities]
+delays = delays(:)';                   %[1 x nDelays]
+jitters = jitters(:)';                 %[1 x nJitters]
+
+assert(length(delays)==length(jitters) && length(jitters)==nDelayedCopies, ...
+	"number of probabilities, delays and jitters must be the same);
+
+switch case TYPE_Corr
+	Delayed:
+		probabilityArray = repmat(probabilities,[1 nSpikes])> rand(
+		spike_train_out = repmat(spike_train_out,[nDelayedCopies 1]) + ...
+				  repmat(delays',[1 nSpikes]) + ...
+				  repmat(jitters',[1 nSpikes]);
+		
+		
+end
+end
+
