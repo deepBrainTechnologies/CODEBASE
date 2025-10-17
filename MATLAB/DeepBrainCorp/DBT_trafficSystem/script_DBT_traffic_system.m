@@ -1,0 +1,12 @@
+%______________________________________________________________
+%
+% script_DBT_traffic_system
+%
+%______________________________________________________________
+
+videoFileName = "D:/DEEPBRAINTECHNOLOGIES/DATASETS/TRAFFIC/ukMroadJunction.mp4";
+
+config = configClassDBTtraffic();
+
+script_detect_and_follow_vehicles
+script_classify_vehicles_unsupervised_notraining

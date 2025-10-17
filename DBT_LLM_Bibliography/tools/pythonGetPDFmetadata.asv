@@ -1,0 +1,22 @@
+from pypdf import PdfReader
+
+pdf_path = "D:\\DEEPBRAINTECHNOLOGIES\\NEUROSCIENCEWORK\\Bibiliography\\retinalHDEA.pdf";
+
+def getPDFmetadata(filename)
+  reader = PdfReader(pdf_path);
+
+  meta = reader.metadata;
+
+  title = meta.title;
+  print(f" TITLE: {meta.title}");
+  metadata.title=
+
+  if (hasattr(meta,"abstract")):
+    print(f"ABSTRACT: {meta.abstract}");
+  else:
+    print("ABSTRACT: No abstract present");    ##; is deprecated
+  #endif
+
+  
+  return()
+#enddef function

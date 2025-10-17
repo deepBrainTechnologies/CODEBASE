@@ -1,4 +1,0 @@
-load_file("nrngui.hoc")
-load_file("simulation_base.hoc")
-print "simulation_base.hoc has been loaded for the auto-launch"
-print "see the NEURON/readme.txt for suggested runs"
